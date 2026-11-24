@@ -1,0 +1,77 @@
+name: tea-blend-grading
+x-python: &python
+  image: tea-blend-grading-python:local
+  build: ./backend
+  environment:
+    DATABASE_URL: mysql+pymysql://tearoom:${DB_PASSWORD:-tearoom-local}@db:3306/tearoom?charset=utf8mb4
+    REDIS_URL: redis://redis:6379/0
+    JWT_SECRET: ${JWT_SECRET:-tea-blend-grading-local-demo-key-change-me}
+    SEED_DEMO: ${SEED_DEMO:-true}
+  volumes: [work:/work]
+services:
+  frontend:
+    build: ./frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-tea-blend-grading}-frontend
+    ports: ["${FRONTEND_PORT:-18267}:80"]
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, wget, -qO, /dev/null, 'http://127.0.0.1/']
+      interval: 3s
+      timeout: 3s
+      retries: 15
+  backend:
+    <<: *python
+    container_name: ${COMPOSE_PROJECT_NAME:-tea-blend-grading}-backend
+    command: [uvicorn, src.main:app, --host, 0.0.0.0, --port, '8000']
+    ports: ["${BACKEND_PORT:-19267}:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health',timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 25
+  worker:
+    <<: *python
+    container_name: ${COMPOSE_PROJECT_NAME:-tea-blend-grading}-worker
+    command: [python, -m, src.worker]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; import time; assert time.time()-Path('/work/worker.touch').stat().st_mtime < 20"]
+      interval: 3s
+      timeout: 3s
+      retries: 25
+  db:
+    image: mysql:8.0
+    container_name: ${COMPOSE_PROJECT_NAME:-tea-blend-grading}-db
+    environment:
+      MYSQL_DATABASE: tearoom
+      MYSQL_USER: tearoom
+      MYSQL_PASSWORD: ${DB_PASSWORD:-tearoom-local}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-tearoom-root-local}
+    ports: ["${DB_PORT:-17767}:3306"]
+    volumes: [mysql:/var/lib/mysql]
+    healthcheck:
+      test: [CMD-SHELL, 'mysql -h127.0.0.1 -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE" -Nse "SELECT 1"']
+      interval: 3s
+      timeout: 4s
+      retries: 40
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-tea-blend-grading}-redis
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [redis:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+volumes:
+  mysql:
+  redis:
+  work:

@@ -1,0 +1,9 @@
+fastapi==0.115.12
+uvicorn==0.34.2
+SQLAlchemy==2.0.41
+PyMySQL==1.1.1
+cryptography==44.0.3
+redis==5.2.1
+PyJWT==2.10.1
+scikit-learn==1.6.1
+numpy==2.2.5
