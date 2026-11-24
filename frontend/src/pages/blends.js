@@ -1,5 +1,5 @@
-import {esc, field, formData, formEnd, handle, header, memo, panelData, panelFields, panelStrip, percent, status} from '../components.js';
-import {GRADE, request, store} from '../store.js';
+import {datetime, esc, field, formData, formEnd, handle, header, memo, panelData, panelFields, panelStrip, percent, status} from '../components.js';
+import {GRADE, MISMATCH, RECALC, request, store} from '../store.js';
 
 function shareRow(row = {}) {
   return `<div class="share-row"><label>原料批次<select name="lot" required><option value="">选择原料</option>
@@ -63,6 +63,29 @@ function evidence(review) {
     <ul>${review.snapshot.ingredients.map(row => `<li>${esc(row.lot)} · 封签 ${esc(row.seal)} · 审评单 #${row.panel_id}</li>`).join('')}</ul></details></section>`;
 }
 
+function recalcValues(result) {
+  return `<p>候选等级 <strong>${GRADE[result.candidate]}</strong> · 复评去向 <strong>${result.needs_repanel ? '转盲复评' : '模型直判'}</strong></p>
+    <div class="grade-bars">${Object.entries(GRADE).map(([key, label]) => `<div><span>${label}</span>
+      <meter min="0" max="1" value="${result.probabilities[key]}">${percent(result.probabilities[key])}</meter><strong>${percent(result.probabilities[key])}</strong></div>`).join('')}</div>`;
+}
+
+function recalcSection(review) {
+  const recalc = review.recalc;
+  if (!recalc) return '';
+  const items = (recalc.mismatches || []).map(key => MISMATCH[key] || key).join('、');
+  const note = recalc.state === 'mismatched' ? `<p class="recalc-alert">对不上：${items}。已撤回初审、转盲复评，首算留底备查。</p>` :
+    recalc.state === 'failed' ? `<p class="recalc-alert">复算失败：${esc(recalc.failure || '原模型取不到')}，签发已被拦截。</p>` :
+    recalc.state === 'queued' ? '<p class="muted">独立复算进行中，吻合前签发将被拦截。</p>' : '';
+  const compare = recalc.baseline && recalc.result ? `<div class="recalc-diff">
+    <div><h4>首算留底</h4>${recalcValues(recalc.baseline)}</div>
+    <div><h4>独立复算</h4>${recalcValues(recalc.result)}</div></div>` : '';
+  return `<section class="evidence recalc"><h3>签发前独立复算 ${status(recalc.state)}</h3>
+    <p class="muted">复算单 #${recalc.id} · 第 ${recalc.attempts} 次 · ${datetime(recalc.created_at)}</p>
+    ${note}${compare}
+    ${recalc.state === 'failed' && store.session.user.role === 'supervisor' ?
+      `<form id="recalc-action">${formEnd('按原复算单重试')}</form>` : ''}</section>`;
+}
+
 function reviewActions(blend, user) {
   const {review} = blend;
   const own = user.id === blend.author_id;
@@ -74,8 +97,12 @@ function reviewActions(blend, user) {
     <h3>盲复评</h3>${panelFields(true)}${formEnd('提交独立盲评')}</form>`;
   if (state === 'verify' && user.role === 'operator' && !own) return `<form id="review-action" data-action="verify" class="form-stack">
     ${memo('初审意见')}${formEnd('确认初审等级')}</form>`;
-  if (state === 'signoff' && user.role === 'supervisor') return `<form id="review-action" data-action="signoff" class="form-stack">
-    ${memo('主管签发意见')}${formEnd('签发等级')}</form>`;
+  if (state === 'signoff' && user.role === 'supervisor') {
+    const blocked = !review.repanel && (!review.recalc || review.recalc.state !== 'matched');
+    return `${blocked ? `<p class="empty">模型直判须独立复算吻合后放行${review.recalc ? `（当前：${RECALC[review.recalc.state]}）` : '（复算单缺失）'}。</p>` : ''}
+      <form id="review-action" data-action="signoff" class="form-stack">
+      ${memo('主管签发意见')}${formEnd('签发等级')}</form>`;
+  }
   if (state === 'failed' && user.role === 'supervisor') return `<form id="review-action" data-action="retry">${formEnd('按原快照重试')}</form>`;
   return own && ['repanel', 'verify'].includes(state) ? '<p class="empty">等待另一位评审员处理。配方作者不可审核自己的配方。</p>' : '';
 }
@@ -89,7 +116,7 @@ function blendDetail(blend) {
     <div class="ratio-band" aria-hidden="true">${blend.shares.map(row => `<div style="flex:${Number(row.percent)}"></div>`).join('')}</div>
     <ul>${blend.shares.map(row => `<li><strong>${esc(row.cultivar)}</strong><a href="#/lots/${row.lot_id}">${esc(row.code)}</a>
       <span>${esc(row.percent)}%</span>${!review ? status(row.lot_state) : ''}</li>`).join('')}</ul></section>
-    ${review ? `${evidence(review)}${review.repanel ? `<section><h3>独立复评 · ${esc(review.repanel.author)}</h3>
+    ${review ? `${evidence(review)}${recalcSection(review)}${review.repanel ? `<section><h3>独立复评 · ${esc(review.repanel.author)}</h3>
       ${panelStrip(review.repanel)}<blockquote>${esc(review.repanel.note)}</blockquote><p>${GRADE[review.repanel.grade]}</p></section>` : ''}
       ${review.verified_by ? `<p class="muted">初审 ${esc(review.verified_by)}${review.signed_by ? ` · 主管 ${esc(review.signed_by)}` : ''}</p>` : ''}
       ${review.final_grade ? `<div class="issued"><span>已签发等级</span><strong>${GRADE[review.final_grade]}</strong></div>` : ''}` : ''}
@@ -121,11 +148,13 @@ export function blends(root, id, refresh) {
       <strong>${esc(row.name)}</strong></span>${status(row.review?.state)}</a></li>`).join('') || '<li class="empty">新建首个拼配配方。</li>'}</ul></aside>
     ${selected ? blendDetail(selected) : ''}</div>`;
   const action = root.querySelector('#review-action');
-  if (!action) return;
-  handle(action, form => {
+  if (action) handle(action, form => {
     const kind = form.dataset.action;
     if (kind === 'submit') return request(`/blends/${selected.id}/review`, {});
     const data = kind === 'repanel' ? panelData(form) : formData(form);
     return request(`/reviews/${selected.review.id}/${kind}`, data);
   }, () => refresh('审核记录已更新。'));
+  const recalcAction = root.querySelector('#recalc-action');
+  if (recalcAction) handle(recalcAction, () => request(`/reviews/${selected.review.id}/recalc/retry`, {}),
+    () => refresh('已按原复算单重新排队复算。'));
 }

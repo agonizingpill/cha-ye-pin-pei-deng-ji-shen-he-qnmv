@@ -9,6 +9,7 @@ engine = create_engine(os.environ['DATABASE_URL'], pool_pre_ping=True, isolation
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 redis = Redis.from_url(os.environ['REDIS_URL'], socket_timeout=5)
 QUEUE = 'tea:grade-review'
+RECALC_QUEUE = 'tea:grade-recalc'
 
 
 class Base(DeclarativeBase):

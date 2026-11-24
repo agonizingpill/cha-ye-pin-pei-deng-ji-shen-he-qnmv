@@ -82,6 +82,21 @@ class GradeReview(Base):
     __table_args__ = (UniqueConstraint('recipe_id', 'revision'),)
 
 
+class RecalcRun(Base):
+    __tablename__ = 'grade_recalc'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey('grade_review.id'), unique=True)
+    state: Mapped[str] = mapped_column(String(20), index=True)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    digest: Mapped[str] = mapped_column(String(64))
+    baseline: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON(none_as_null=True))
+    mismatches: Mapped[list | None] = mapped_column(JSON(none_as_null=True))
+    failure: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class SensoryPanel(Base):
     __tablename__ = 'sensory_panel'
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -3,7 +3,7 @@ from datetime import timezone
 from sqlalchemy import select
 
 from .constants import ATTRIBUTES, ReviewState
-from .models import SensoryPanel, User
+from .models import RecalcRun, SensoryPanel, User
 from .workflow import lot_state, sample_for
 
 
@@ -33,8 +33,20 @@ def lot_out(row, db):
             'sample': sample_out(sample_for(db, lot_id=row.id))}
 
 
+def recalc_out(row, review_state):
+    if row is None:
+        return None
+    out = {'id': row.id, 'state': row.state, 'attempts': row.attempts, 'failure': row.failure,
+           'mismatches': row.mismatches, 'created_at': iso(row.created_at)}
+    if review_state != ReviewState.REPANEL:
+        out['baseline'] = row.baseline
+        out['result'] = row.result
+    return out
+
+
 def review_out(row, db):
     panel = db.scalar(select(SensoryPanel).filter_by(review_id=row.id))
+    recalc = db.scalar(select(RecalcRun).filter_by(review_id=row.id))
     result = row.result
     if row.state == ReviewState.REPANEL:
         result = {key: result[key] for key in ('confidence', 'effective_threshold', 'calibrated_floor',
@@ -45,6 +57,7 @@ def review_out(row, db):
             'signed_by': db.get(User, row.signed_by).name if row.signed_by else None,
             'final_grade': row.final_grade if row.signed_by else None,
             'repanel': panel_out(panel, db) if panel else None,
+            'recalc': recalc_out(recalc, row.state),
             'sample': sample_out(sample_for(db, review_id=row.id))}
 
 

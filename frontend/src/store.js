@@ -1,6 +1,8 @@
 export const ROLE = {operator: '评审员', supervisor: '品质主管', viewer: '只读观察员'};
 export const REVIEW = {queued: '排队计算', failed: '计算失败', repanel: '待盲复评', verify: '待初审',
   signoff: '待签发', approved: '待成品封存', sealed: '已封存'};
+export const RECALC = {queued: '复算核对中', matched: '复算吻合', mismatched: '复算对不上', failed: '复算失败'};
+export const MISMATCH = {candidate: '候选等级', probabilities: '各级概率', needs_repanel: '复评去向'};
 export const GRADE = {selection: '精选级', standard: '标准级', secondary: '复配级'};
 export const LOT = {awaiting_panel: '待感官评审', awaiting_sample: '待留样', ready: '可用于拼配'};
 export const SCORES = {aroma: '香气', body: '汤体', sweetness: '回甘', leaf: '叶底', defect: '杂味扣分'};

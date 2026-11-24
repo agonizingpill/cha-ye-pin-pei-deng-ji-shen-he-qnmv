@@ -16,6 +16,14 @@ def digest(snapshot):
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
+RECHECK_ITEMS = ('candidate', 'probabilities', 'needs_repanel')
+
+
+def compare(baseline, result):
+    """逐项核对首算与独立复算的候选等级、各级概率和复评去向，返回对不上的项目。"""
+    return [key for key in RECHECK_ITEMS if baseline.get(key) != result.get(key)]
+
+
 def training_records():
     rng = np.random.default_rng(MODEL_SEED)
     quality = rng.uniform(44, 97, 1050)

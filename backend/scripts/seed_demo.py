@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from src.auth import password_hash
 from src.constants import ATTRIBUTES, Role
-from src.db import Base, engine, transaction
+from src.db import QUEUE, Base, engine, transaction
 from src.models import BlendRecipe, BlendShare, GradeReview, RetainedSample, SensoryPanel, TeaLot, ThresholdPolicy, User
 from src.workflow import freeze, wake
 
@@ -67,7 +67,7 @@ def seed():
                 db.flush()
                 queued.append(review.id)
     for key in queued:
-        wake(key)
+        wake(QUEUE, key)
     print(f'Demo seed complete. New grade reviews: {len(queued)}')
 
 

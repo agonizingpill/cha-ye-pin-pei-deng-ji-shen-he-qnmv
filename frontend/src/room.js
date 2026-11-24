@@ -59,7 +59,8 @@ async function render(message = '') {
     if (pass !== revision) return;
     room.render(content, id, render);
     const review = store.blends.find(row => row.id === id)?.review;
-    if (section === 'blends' && review?.state === 'queued') tick = setTimeout(() => render(), 1800);
+    if (section === 'blends' && (review?.state === 'queued' || review?.recalc?.state === 'queued'))
+      tick = setTimeout(() => render(), 1800);
   } catch (error) {
     if (pass === revision) content.innerHTML = `<p class="empty error" role="alert">${esc(error.message)} 请刷新台账重试。</p>`;
   }

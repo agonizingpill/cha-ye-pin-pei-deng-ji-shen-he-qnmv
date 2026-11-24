@@ -5,10 +5,11 @@ from fastapi import HTTPException
 from redis import RedisError
 from sqlalchemy import select
 
-from .constants import ATTRIBUTES, ReviewState as State
-from .db import QUEUE, redis
+from .constants import ATTRIBUTES, RecalcState, ReviewState as State
+from .db import redis
 from .grade_model import digest
-from .models import Audit, BlendRecipe, BlendShare, GradeReview, RetainedSample, SensoryPanel, TeaLot, ThresholdPolicy
+from .models import (Audit, BlendRecipe, BlendShare, GradeReview, RecalcRun, RetainedSample, SensoryPanel, TeaLot,
+                     ThresholdPolicy)
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +79,11 @@ def freeze(db, recipe):
                        state=State.QUEUED, snapshot=snapshot, digest=digest(snapshot))
 
 
-def wake(review_id):
+def wake(queue, key):
     try:
-        redis.rpush(QUEUE, review_id)
+        redis.rpush(queue, key)
     except RedisError:
-        logger.warning('Redis notification failed for review %s; database polling will recover', review_id)
+        logger.warning('Redis notification failed for %s:%s; database polling will recover', queue, key)
 
 
 def expect(review, *states):
@@ -120,6 +121,17 @@ def approve(db, review, user, note):
     expect(review, State.SIGNOFF)
     if review.verified_by == user.id:
         raise HTTPException(403, '签发和初审须由两人分别完成')
+    panel = db.scalar(select(SensoryPanel).filter_by(review_id=review.id))
+    if panel is None:
+        recalc = db.scalar(select(RecalcRun).filter_by(review_id=review.id))
+        if recalc is None:
+            raise HTTPException(409, '模型直判缺少独立复算单，签发被拦截')
+        if recalc.state == RecalcState.QUEUED:
+            raise HTTPException(409, '独立复算尚未完成，签发被拦截')
+        if recalc.state == RecalcState.FAILED:
+            raise HTTPException(409, '独立复算失败（原模型取不到或计算异常），重试复算后再签发')
+        if recalc.state != RecalcState.MATCHED:
+            raise HTTPException(409, '复算与首算对不上，审核已转盲复评，签发被拦截')
     review.signed_by = user.id
     review.state = State.APPROVED
     record(db, user, 'grade.signoff', review.id, note)

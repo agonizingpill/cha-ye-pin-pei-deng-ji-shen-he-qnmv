@@ -1,4 +1,4 @@
-import {GRADE, LOT, REVIEW, SCORES} from './store.js';
+import {GRADE, LOT, RECALC, REVIEW, SCORES} from './store.js';
 
 export function esc(value = '') {
   const entities = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
@@ -13,9 +13,9 @@ export const percent = value => `${(100 * Number(value)).toFixed(1)}%`;
 export const formData = form => Object.fromEntries(new FormData(form));
 
 export function status(value) {
-  const good = ['ready', 'approved', 'sealed'].includes(value);
-  const warning = ['awaiting_sample', 'repanel', 'failed'].includes(value);
-  return `<span class="status ${good ? 'good' : warning ? 'warn' : ''}">${REVIEW[value] || LOT[value] || '配方草稿'}</span>`;
+  const good = ['ready', 'approved', 'sealed', 'matched'].includes(value);
+  const warning = ['awaiting_sample', 'repanel', 'failed', 'mismatched'].includes(value);
+  return `<span class="status ${good ? 'good' : warning ? 'warn' : ''}">${REVIEW[value] || RECALC[value] || LOT[value] || '配方草稿'}</span>`;
 }
 
 export function header(title, copy, action = '') {

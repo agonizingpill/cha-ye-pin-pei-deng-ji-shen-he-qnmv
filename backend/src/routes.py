@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 
 from . import present, schemas as s, workflow as flow
 from .auth import actor, issue, matches, permits
-from .constants import ReviewState as State, Role
-from .db import get_db
-from .models import Audit, BlendRecipe, GradeReview, RetainedSample, SensoryPanel, TeaLot, ThresholdPolicy, User
+from .constants import RecalcState, ReviewState as State, Role
+from .db import QUEUE, RECALC_QUEUE, get_db
+from .models import Audit, BlendRecipe, GradeReview, RecalcRun, RetainedSample, SensoryPanel, TeaLot, ThresholdPolicy, User
 
 router = APIRouter()
 reader = Depends(actor)
@@ -104,7 +104,7 @@ def submit(key: int, user: User = operator, db: Session = database):
     db.add(review)
     flow.record(db, user, 'grade.queue', row.code, review.digest)
     db.commit()
-    flow.wake(review.id)
+    flow.wake(QUEUE, review.id)
     return present.review_out(review, db)
 
 
@@ -120,8 +120,24 @@ def retry(key: int, user: User = supervisor, db: Session = database):
     row.state, row.failure = State.QUEUED, None
     flow.record(db, user, 'grade.retry', key, row.digest)
     db.commit()
-    flow.wake(key)
+    flow.wake(QUEUE, key)
     return present.review_out(row, db)
+
+
+@router.post('/reviews/{key}/recalc/retry', status_code=202)
+def retry_recalc(key: int, user: User = supervisor, db: Session = database):
+    review = flow.require(db, GradeReview, key)
+    recalc = db.scalar(select(RecalcRun).filter_by(review_id=review.id).with_for_update())
+    if recalc is None:
+        raise HTTPException(404, '该审核没有独立复算单')
+    if recalc.state != RecalcState.FAILED:
+        raise HTTPException(409, f'复算状态 {recalc.state} 不支持重试')
+    recalc.state, recalc.failure = RecalcState.QUEUED, None
+    recalc.result, recalc.mismatches = None, None
+    flow.record(db, user, 'grade.recalc.retry', key, recalc.digest)
+    db.commit()
+    flow.wake(RECALC_QUEUE, recalc.id)
+    return present.review_out(review, db)
 
 
 @router.post('/reviews/{key}/repanel')

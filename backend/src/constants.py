@@ -17,6 +17,13 @@ class ReviewState(StrEnum):
     SEALED = 'sealed'
 
 
+class RecalcState(StrEnum):
+    QUEUED = 'queued'
+    MATCHED = 'matched'
+    MISMATCHED = 'mismatched'
+    FAILED = 'failed'
+
+
 class Grade(StrEnum):
     SELECTION = 'selection'
     STANDARD = 'standard'

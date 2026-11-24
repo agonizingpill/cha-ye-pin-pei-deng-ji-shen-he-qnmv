@@ -59,15 +59,17 @@ docker compose down -v --remove-orphans
 
 计算任务在 MySQL 中持久化，Redis 唤醒 worker。队列通知丢失时 worker 扫描待计算记录，失败后由主管按原输入摘要重试。记录保留输入、SHA-256、参数、固定种子、概率、校准覆盖率及验证准确率。数据从模拟历史生成，验证指标用于说明阈值行为。静态初始数据 5 批原料、5 张原料感官单、4 个原料封签、3 套配方、2 个待计算审核、1 个阈值版本。seed 按自然键补建，并保留录入后的业务变化。
 
+模型直判（无需盲复评）的审核在签发前由 worker 用原模型版本和送审冻结数据独立复算，逐项核对候选等级、各级概率和复评去向。复算未结束、复算失败或原模型版本取不到时签发被拦截；主管按原复算单重试，不新增复算单。复算与首算对不上时撤回初审、转盲复评，首算在复算单留底。拼配详情展示复算状态和对不上的项目，盲复评期间隐藏具体概率。
+
 | 路径 | 职责 |
 |---|---|
 | `backend/src/models.py` / `schemas.py` | 批次、感官单、拼配比例、等级、阈值与封签约束 |
 | `backend/src/workflow.py` / `routes.py` / `present.py` | 快照、独立复评、双人签发、封存及 API |
-| `backend/src/grade_model.py` / `worker.py` | 模型拟合、阈值校准、持久化消费 |
+| `backend/src/grade_model.py` / `worker.py` | 模型拟合、阈值校准、持久化消费与签发前复算 |
 | `backend/scripts/seed_demo.py` | 可重入的演示工作台初始化 |
 | `frontend/src/store.js` / `components.js` / `pages/` | API、会话、共享界面件、业务入口 |
 
-前后端共享枚举 `Role`、`ReviewState`、`Grade` 见 `backend/src/constants.py` 和 `frontend/src/store.js`。原料可用性在 `backend/src/workflow.py` 计算，展示映射在 `frontend/src/store.js`。项目使用 Python 3.11、FastAPI、SQLAlchemy、scikit-learn、MySQL 8、Redis 7、Nginx 与原生 HTML/CSS/JS。
+前后端共享枚举 `Role`、`ReviewState`、`RecalcState`、`Grade` 见 `backend/src/constants.py` 和 `frontend/src/store.js`。原料可用性在 `backend/src/workflow.py` 计算，展示映射在 `frontend/src/store.js`。项目使用 Python 3.11、FastAPI、SQLAlchemy、scikit-learn、MySQL 8、Redis 7、Nginx 与原生 HTML/CSS/JS。
 
 [MIT License](LICENSE)
 
